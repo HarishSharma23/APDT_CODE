@@ -1,0 +1,44 @@
+import wixData from 'wix-data';
+import { getReferee, getDocumentation } from 'backend/member';
+import { logError } from 'backend/weFixWix/util/errors';
+
+export async function getPending(typeIn, limitIn, pageIndexIn) {
+    let dataOut = {};
+    dataOut.needsApproved = [];
+    try {
+        let query = wixData.query('member').eq('pendingStatus', 'pending').limit(limitIn);
+        if (typeIn && typeIn !== 'all') {
+            query = query.eq('pending', typeIn)
+        }
+        if (pageIndexIn) {
+            let skip = pageIndexIn * limitIn
+            query = query.skip(skip);
+        }
+        let qres = await query.include("documentation", "privateMemberData", "approval", "referee").find({ suppressAuth: true });
+        if (qres && qres.items && qres.items.length > 0) {
+            dataOut.needsApproved = qres.items;
+            dataOut.pages = qres.totalPages;
+            dataOut.currentPage = qres.currentPage;
+        }
+
+        if (dataOut.needsApproved && dataOut.needsApproved.length > 0) {
+            let i = 0;
+            while (i < dataOut.needsApproved.length) {
+                try {
+                    if (dataOut.needsApproved[i].referee) {
+                        dataOut.needsApproved[i].refData = await getReferee(dataOut.needsApproved[i].referee);
+                    }
+                } catch (err) {
+                    console.log(err);
+                    logError(err.message, err.name, 'backend/getPending/getPending').then(() => {}).catch(() => {});
+                }
+                i++;
+            }
+        }
+    } catch (err) {
+        console.log(err);
+        logError(err.message, err.name, 'backend/getPending/getPending').then(() => {}).catch(() => {});
+    }
+
+    return dataOut;
+}
